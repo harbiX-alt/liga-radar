@@ -3,7 +3,6 @@ import { ArrowRight, TrendingUp, Users, Calendar } from "lucide-react";
 import { LIGEN } from "@/lib/types";
 import type { Standing, PlayerWithStats } from "@/lib/types";
 import { getUpcomingOdds } from "@/lib/odds-api";
-import { getTopScorers, getStandings } from "@/lib/football-api";
 import { OddsTable } from "@/components/OddsTable";
 import { PlayerCard } from "@/components/PlayerCard";
 import { TeamCard } from "@/components/TeamCard";
@@ -68,28 +67,19 @@ function staticSpielerToPlayerWithStats(limit: number): PlayerWithStats[] {
 }
 
 async function getHomePageData() {
-  const bundesliga = LIGEN[0]; // 1. Bundesliga
+  const bundesliga = LIGEN[0];
 
-  const [odds, topScorers, standings] = await Promise.allSettled([
-    getUpcomingOdds(bundesliga.oddsApiKey),
-    getTopScorers(bundesliga.apiFootballId, bundesliga.season),
-    getStandings(bundesliga.apiFootballId, bundesliga.season),
-  ]);
-
-  const liveScorers = topScorers.status === "fulfilled" ? topScorers.value.slice(0, 5) : [];
-  const liveStandings = standings.status === "fulfilled" ? standings.value.slice(0, 10) : [];
+  const oddsResult = await getUpcomingOdds(bundesliga.oddsApiKey).catch(() => []);
 
   return {
-    odds: odds.status === "fulfilled" ? odds.value.slice(0, 6) : [],
-    topScorers: liveScorers.length > 0 ? liveScorers : staticSpielerToPlayerWithStats(5),
-    standings: liveStandings.length > 0 ? liveStandings : staticTeamsToStandings(10),
-    scorersFallback: liveScorers.length === 0,
-    standingsFallback: liveStandings.length === 0,
+    odds: oddsResult.slice(0, 6),
+    topScorers: staticSpielerToPlayerWithStats(5),
+    standings: staticTeamsToStandings(10),
   };
 }
 
 export default async function HomePage() {
-  const { odds, topScorers, standings, scorersFallback, standingsFallback } = await getHomePageData();
+  const { odds, topScorers, standings } = await getHomePageData();
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8 space-y-12 animate-fade-in">
@@ -175,9 +165,7 @@ export default async function HomePage() {
               Vollständig <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
-          {standingsFallback && (
-            <p className="text-xs text-zinc-600 mb-2">Vorschau · Live-Tabelle folgt</p>
-          )}
+
           <div className="card divide-y divide-surface-border">
             {/* Header */}
             <div className="flex items-center gap-3 px-4 py-2 text-xs text-zinc-600">
@@ -206,9 +194,7 @@ export default async function HomePage() {
               Mehr <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
-          {scorersFallback && (
-            <p className="text-xs text-zinc-600 mb-2">Vorschau · Live-Statistiken folgen</p>
-          )}
+
           <div className="flex flex-col gap-2">
             {topScorers.map((p, i) => (
               <PlayerCard key={p.player.id} data={p} rank={i + 1} />
