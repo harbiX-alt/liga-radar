@@ -1,13 +1,71 @@
 import Link from "next/link";
 import { ArrowRight, TrendingUp, Users, Calendar } from "lucide-react";
 import { LIGEN } from "@/lib/types";
-import { getUpcomingOdds, extractBestOdds } from "@/lib/odds-api";
+import type { Standing, PlayerWithStats } from "@/lib/types";
+import { getUpcomingOdds } from "@/lib/odds-api";
 import { getTopScorers, getStandings } from "@/lib/football-api";
 import { OddsTable } from "@/components/OddsTable";
 import { PlayerCard } from "@/components/PlayerCard";
 import { TeamCard } from "@/components/TeamCard";
+import { STATIC_TEAMS } from "@/data/bundesliga-teams";
+import { STATIC_SPIELER } from "@/data/bundesliga-spieler";
 
 export const revalidate = 300; // 5 min
+
+function staticTeamsToStandings(limit: number): Standing[] {
+  return STATIC_TEAMS.filter((t) => t.liga === "bundesliga")
+    .slice(0, limit)
+    .map((t, i) => ({
+      rank: i + 1,
+      team: { id: t.apiId, name: t.name, code: "", country: "Germany", founded: t.founded ?? 0, national: false, logo: "" },
+      points: 0,
+      goalsDiff: 0,
+      group: "",
+      form: "",
+      status: "",
+      description: "",
+      all: { played: 0, win: 0, draw: 0, lose: 0, goals: { for: 0, against: 0 } },
+      home: { played: 0, win: 0, draw: 0, lose: 0, goals: { for: 0, against: 0 } },
+      away: { played: 0, win: 0, draw: 0, lose: 0, goals: { for: 0, against: 0 } },
+    }));
+}
+
+function staticSpielerToPlayerWithStats(limit: number): PlayerWithStats[] {
+  return STATIC_SPIELER.filter((p) => p.liga === "bundesliga")
+    .slice(0, limit)
+    .map((p) => {
+      const parts = p.name.split(" ");
+      const firstname = parts[0];
+      const lastname = parts.slice(1).join(" ") || parts[0];
+      return {
+        player: {
+          id: p.apiId,
+          name: p.name,
+          firstname,
+          lastname,
+          age: 0,
+          birth: { date: "", place: "", country: p.nationalitaet },
+          nationality: p.nationalitaet,
+          height: "",
+          weight: "",
+          injured: false,
+          photo: "",
+        },
+        statistics: [
+          {
+            team: { id: 0, name: p.verein, code: "", country: "Germany", founded: 0, national: false, logo: "" },
+            league: { id: 78, name: "1. Bundesliga", country: "Germany", logo: "", season: 2025 },
+            games: { appearences: 0, lineups: 0, minutes: 0, position: p.position, rating: "", captain: false },
+            goals: { total: 0, conceded: 0, assists: 0, saves: 0 },
+            passes: { total: 0, key: 0, accuracy: 0 },
+            shots: { total: 0, on: 0 },
+            cards: { yellow: 0, yellowred: 0, red: 0 },
+            dribbles: { attempts: 0, success: 0 },
+          },
+        ],
+      };
+    });
+}
 
 async function getHomePageData() {
   const bundesliga = LIGEN[0]; // 1. Bundesliga
@@ -18,15 +76,20 @@ async function getHomePageData() {
     getStandings(bundesliga.apiFootballId, bundesliga.season),
   ]);
 
+  const liveScorers = topScorers.status === "fulfilled" ? topScorers.value.slice(0, 5) : [];
+  const liveStandings = standings.status === "fulfilled" ? standings.value.slice(0, 10) : [];
+
   return {
     odds: odds.status === "fulfilled" ? odds.value.slice(0, 6) : [],
-    topScorers: topScorers.status === "fulfilled" ? topScorers.value.slice(0, 5) : [],
-    standings: standings.status === "fulfilled" ? standings.value.slice(0, 10) : [],
+    topScorers: liveScorers.length > 0 ? liveScorers : staticSpielerToPlayerWithStats(5),
+    standings: liveStandings.length > 0 ? liveStandings : staticTeamsToStandings(10),
+    scorersFallback: liveScorers.length === 0,
+    standingsFallback: liveStandings.length === 0,
   };
 }
 
 export default async function HomePage() {
-  const { odds, topScorers, standings } = await getHomePageData();
+  const { odds, topScorers, standings, scorersFallback, standingsFallback } = await getHomePageData();
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8 space-y-12 animate-fade-in">
@@ -112,27 +175,24 @@ export default async function HomePage() {
               Vollständig <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
-          {standings.length > 0 ? (
-            <div className="card divide-y divide-surface-border">
-              {/* Header */}
-              <div className="flex items-center gap-3 px-4 py-2 text-xs text-zinc-600">
-                <span className="w-6 text-center">#</span>
-                <span className="flex-1">Verein</span>
-                <span className="hidden sm:flex gap-4 mr-2">
-                  <span>Sp</span>
-                  <span>Diff</span>
-                </span>
-                <span className="w-6 text-right font-bold">Pkt</span>
-              </div>
-              {standings.map((s) => (
-                <TeamCard key={s.team.id} standing={s} ligaSlug="bundesliga" />
-              ))}
-            </div>
-          ) : (
-            <div className="card p-8 text-center text-zinc-500">
-              Tabelle – API-Key eintragen.
-            </div>
+          {standingsFallback && (
+            <p className="text-xs text-zinc-600 mb-2">Vorschau · Live-Tabelle folgt</p>
           )}
+          <div className="card divide-y divide-surface-border">
+            {/* Header */}
+            <div className="flex items-center gap-3 px-4 py-2 text-xs text-zinc-600">
+              <span className="w-6 text-center">#</span>
+              <span className="flex-1">Verein</span>
+              <span className="hidden sm:flex gap-4 mr-2">
+                <span>Sp</span>
+                <span>Diff</span>
+              </span>
+              <span className="w-6 text-right font-bold">Pkt</span>
+            </div>
+            {standings.map((s) => (
+              <TeamCard key={s.team.id} standing={s} ligaSlug="bundesliga" />
+            ))}
+          </div>
         </section>
 
         {/* Torschützen */}
@@ -146,17 +206,14 @@ export default async function HomePage() {
               Mehr <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
-          {topScorers.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              {topScorers.map((p, i) => (
-                <PlayerCard key={p.player.id} data={p} rank={i + 1} />
-              ))}
-            </div>
-          ) : (
-            <div className="card p-8 text-center text-zinc-500">
-              Spielerdaten – API-Key eintragen.
-            </div>
+          {scorersFallback && (
+            <p className="text-xs text-zinc-600 mb-2">Vorschau · Live-Statistiken folgen</p>
           )}
+          <div className="flex flex-col gap-2">
+            {topScorers.map((p, i) => (
+              <PlayerCard key={p.player.id} data={p} rank={i + 1} />
+            ))}
+          </div>
         </section>
       </div>
     </div>
