@@ -21,6 +21,7 @@ interface ApiResponse<T> {
   response: T;
 }
 
+// Raw fetch — never call directly in components, use the exported helpers below
 async function footballGet<T>(
   path: string,
   params: Record<string, string> = {},
@@ -37,26 +38,23 @@ async function footballGet<T>(
     next: { revalidate },
   });
 
-  if (!res.ok) {
-    throw new Error(`API-Football HTTP ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`API-Football HTTP ${res.status}`);
 
   const data: ApiResponse<T> = await res.json();
 
-  // API returns errors in body (e.g. rate limit) with HTTP 200
+  // API returns errors in body with HTTP 200 (e.g. rate limit)
   const errors = data.errors;
   if (errors && !Array.isArray(errors) && Object.keys(errors).length > 0) {
-    throw new Error(`API-Football error: ${JSON.stringify(errors)}`);
+    throw new Error(`API-Football: ${JSON.stringify(errors)}`);
   }
 
   return data.response;
 }
 
-// ─── Teams ────────────────────────────────────────────────────────────────────
-
-// Cached at app level — teams change at most once per season
+// ─── Teams ─────────────────────────────────────────────────────────────────
+// unstable_cache: one API call per league per day (teams don't change)
 export const getTeamsByLeague = unstable_cache(
-  async (leagueId: number, season: number): Promise<TeamWithVenue[]> =>
+  (leagueId: number, season: number) =>
     footballGet<TeamWithVenue[]>("/teams", {
       league: String(leagueId),
       season: String(season),
@@ -65,13 +63,8 @@ export const getTeamsByLeague = unstable_cache(
   { revalidate: 86400 }
 );
 
-export async function getTeamById(teamId: number): Promise<TeamWithVenue | null> {
-  const res = await footballGet<TeamWithVenue[]>("/teams", { id: String(teamId) });
-  return res[0] ?? null;
-}
-
-// ─── Squad ────────────────────────────────────────────────────────────────────
-
+// ─── Squad ─────────────────────────────────────────────────────────────────
+// Called only on verein page visits (not during build), cached 24h per team
 export const getSquad = unstable_cache(
   async (teamId: number): Promise<SquadPlayer[]> => {
     const res = await footballGet<{ team: Team; players: SquadPlayer[] }[]>(
@@ -84,30 +77,30 @@ export const getSquad = unstable_cache(
   { revalidate: 86400 }
 );
 
-// ─── Players ─────────────────────────────────────────────────────────────────
-
-// Cache per league — reused by generateStaticParams AND page components
+// ─── Players ───────────────────────────────────────────────────────────────
+// unstable_cache: shared across generateStaticParams AND page components.
+// Result for (78, 2024) is fetched ONCE and reused everywhere.
 export const getTopScorers = unstable_cache(
-  async (leagueId: number, season: number): Promise<PlayerWithStats[]> =>
-    footballGet<PlayerWithStats[]>(
-      "/players/topscorers",
-      { league: String(leagueId), season: String(season) }
-    ),
+  (leagueId: number, season: number) =>
+    footballGet<PlayerWithStats[]>("/players/topscorers", {
+      league: String(leagueId),
+      season: String(season),
+    }),
   ["top-scorers"],
   { revalidate: 3600 }
 );
 
 export const getTopAssists = unstable_cache(
-  async (leagueId: number, season: number): Promise<PlayerWithStats[]> =>
-    footballGet<PlayerWithStats[]>(
-      "/players/topassists",
-      { league: String(leagueId), season: String(season) }
-    ),
+  (leagueId: number, season: number) =>
+    footballGet<PlayerWithStats[]>("/players/topassists", {
+      league: String(leagueId),
+      season: String(season),
+    }),
   ["top-assists"],
   { revalidate: 3600 }
 );
 
-// Direct player fetch — only used for dynamic (non-top-scorer) player pages
+// Direct fetch — only for dynamic player pages not in top-scorer list
 export async function getPlayerById(
   playerId: number,
   season: number
@@ -120,8 +113,7 @@ export async function getPlayerById(
   return res[0] ?? null;
 }
 
-// ─── Standings ────────────────────────────────────────────────────────────────
-
+// ─── Standings ─────────────────────────────────────────────────────────────
 export const getStandings = unstable_cache(
   async (leagueId: number, season: number): Promise<Standing[]> => {
     const res = await footballGet<{ league: { standings: Standing[][] } }[]>(
@@ -134,29 +126,27 @@ export const getStandings = unstable_cache(
   { revalidate: 3600 }
 );
 
-// ─── Fixtures ─────────────────────────────────────────────────────────────────
-
+// ─── Fixtures ──────────────────────────────────────────────────────────────
+// ALL fixtures for a league in ONE call — cached and reused everywhere.
+// This is the single source of truth. Do NOT add per-round API calls.
 export const getFixturesByLeague = unstable_cache(
-  async (leagueId: number, season: number): Promise<Fixture[]> =>
-    footballGet<Fixture[]>(
-      "/fixtures",
-      { league: String(leagueId), season: String(season) },
-      1800
-    ),
+  (leagueId: number, season: number) =>
+    footballGet<Fixture[]>("/fixtures", {
+      league: String(leagueId),
+      season: String(season),
+    }),
   ["fixtures-by-league"],
   { revalidate: 1800 }
 );
 
+// Filter from cached league data — zero extra API calls
 export async function getFixturesByRound(
   leagueId: number,
   season: number,
   round: string
 ): Promise<Fixture[]> {
-  return footballGet<Fixture[]>(
-    "/fixtures",
-    { league: String(leagueId), season: String(season), round },
-    1800
-  );
+  const all = await getFixturesByLeague(leagueId, season);
+  return all.filter((f) => f.league.round === round);
 }
 
 export async function getUpcomingFixtures(
@@ -227,16 +217,13 @@ export function groupFixturesBySpieltag(fixtures: Fixture[]): SpieltageMap {
   }, {});
 }
 
-// ─── Slug helpers ─────────────────────────────────────────────────────────────
+// ─── Slug helpers ──────────────────────────────────────────────────────────
 
 export function teamToSlug(name: string): string {
   return name
     .toLowerCase()
     .replace(/\s+/g, "-")
-    .replace(/ä/g, "ae")
-    .replace(/ö/g, "oe")
-    .replace(/ü/g, "ue")
-    .replace(/ß/g, "ss")
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
     .replace(/[^a-z0-9-]/g, "");
 }
 
@@ -244,10 +231,7 @@ export function playerToSlug(firstname: string, lastname: string, id: number): s
   const name = `${firstname}-${lastname}`
     .toLowerCase()
     .replace(/\s+/g, "-")
-    .replace(/ä/g, "ae")
-    .replace(/ö/g, "oe")
-    .replace(/ü/g, "ue")
-    .replace(/ß/g, "ss")
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
     .replace(/[^a-z0-9-]/g, "");
   return `${name}-${id}`;
 }

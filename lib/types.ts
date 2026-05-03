@@ -18,7 +18,7 @@ export const LIGEN: Liga[] = [
     shortName: "BL1",
     apiFootballId: 78,
     oddsApiKey: "soccer_germany_bundesliga",
-    season: 2024,
+    season: 2025,
   },
   {
     slug: "2-bundesliga",
@@ -26,7 +26,7 @@ export const LIGEN: Liga[] = [
     shortName: "BL2",
     apiFootballId: 79,
     oddsApiKey: "soccer_germany_bundesliga2",
-    season: 2024,
+    season: 2025,
   },
   {
     slug: "3-liga",
@@ -34,7 +34,7 @@ export const LIGEN: Liga[] = [
     shortName: "3L",
     apiFootballId: 80,
     oddsApiKey: "soccer_germany_liga3",
-    season: 2024,
+    season: 2025,
   },
 ];
 
