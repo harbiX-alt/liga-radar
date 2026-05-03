@@ -227,14 +227,13 @@ export function teamToSlug(name: string): string {
     .replace(/[^a-z0-9-]/g, "");
 }
 
-export function playerToSlug(firstname: string, lastname: string, id: number): string {
-  const name = `${firstname}-${lastname}`
+export function playerToSlug(firstname: string, lastname: string, _id?: number): string {
+  return `${firstname}-${lastname}`
     .toLowerCase()
     .replace(/\s+/g, "-")
     .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
     .normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9-]/g, "");
-  return `${name}-${id}`;
 }
 
 export function slugToPlayerId(slug: string): number {

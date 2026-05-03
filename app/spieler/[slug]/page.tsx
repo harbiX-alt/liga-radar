@@ -9,7 +9,6 @@ import {
   getTopAssists,
   getPlayerById,
   getTeamNextFixtures,
-  slugToPlayerId,
   teamToSlug,
 } from "@/lib/football-api";
 import { getUpcomingOdds, extractBestOdds, formatOdds } from "@/lib/odds-api";
@@ -78,12 +77,11 @@ async function findPlayer(playerId: number): Promise<PlayerWithStats | null> {
 // ─── Metadata ─────────────────────────────────────────────────────────────────
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const playerId = slugToPlayerId(slug);
-  if (isNaN(playerId)) return {};
+  const staticP = STATIC_SPIELER.find((p) => p.slug === slug);
+  if (!staticP) return {};
 
-  const apiData = await findPlayer(playerId);
-  const staticP = !apiData ? STATIC_SPIELER.find((p) => p.apiId === playerId) : null;
-  const data = apiData ?? (staticP ? staticPlayerToPlayerWithStats(staticP) : null);
+  const apiData = await findPlayer(staticP.apiId);
+  const data = apiData ?? staticPlayerToPlayerWithStats(staticP);
   if (!data) return {};
 
   const { player, statistics } = data;
@@ -107,12 +105,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default async function SpielerPage({ params }: Props) {
   const { slug } = await params;
-  const playerId = slugToPlayerId(slug);
-  if (isNaN(playerId)) notFound();
+  const staticP = STATIC_SPIELER.find((p) => p.slug === slug);
+  if (!staticP) notFound();
 
-  const apiData = await findPlayer(playerId);
-  const staticP = !apiData ? STATIC_SPIELER.find((p) => p.apiId === playerId) : null;
-  const data = apiData ?? (staticP ? staticPlayerToPlayerWithStats(staticP) : null);
+  const apiData = await findPlayer(staticP.apiId);
+  const data = apiData ?? staticPlayerToPlayerWithStats(staticP);
   if (!data) notFound();
 
   const { player, statistics } = data;

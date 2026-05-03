@@ -358,7 +358,7 @@ export default async function VereinPage({ params }: Props) {
                         const nameParts = p.name.split(". "); // e.g. "H. Kane" → need full name
                         const playerSlug = scorerData
                           ? playerToSlug(scorerData.player.firstname, scorerData.player.lastname, p.id)
-                          : `${p.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}-${p.id}`;
+                          : p.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 
                         return (
                           <Link
