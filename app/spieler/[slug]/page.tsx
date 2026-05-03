@@ -33,11 +33,11 @@ function staticPlayerToPlayerWithStats(p: StaticPlayer): PlayerWithStats {
     statistics: [{
       team: { id: 0, name: p.verein, code: "", country: "Germany", founded: 0, national: false, logo: "" },
       league: { id: 78, name: "1. Bundesliga", country: "Germany", logo: "", season: 2025 },
-      games: { appearences: 0, lineups: 0, minutes: 0, position: p.position, rating: "", captain: false },
-      goals: { total: 0, conceded: 0, assists: 0, saves: 0 },
+      games: { appearences: p.spiele ?? 0, lineups: 0, minutes: p.minuten ?? 0, position: p.position, rating: "", captain: false },
+      goals: { total: p.goals ?? 0, conceded: 0, assists: p.assists ?? 0, saves: 0 },
       passes: { total: 0, key: 0, accuracy: 0 },
       shots: { total: 0, on: 0 },
-      cards: { yellow: 0, yellowred: 0, red: 0 },
+      cards: { yellow: p.gelbeKarten ?? 0, yellowred: 0, red: 0 },
       dribbles: { attempts: 0, success: 0 },
     }],
   };
