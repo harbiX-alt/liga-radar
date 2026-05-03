@@ -180,6 +180,15 @@ export interface Fixture {
   };
 }
 
+export interface SquadPlayer {
+  id: number;
+  name: string;
+  age: number;
+  number: number | null;
+  position: string;
+  photo: string;
+}
+
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
 export interface MatchWithOdds {

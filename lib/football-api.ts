@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import type {
   Team,
   TeamWithVenue,
@@ -5,6 +6,7 @@ import type {
   Standing,
   Fixture,
   SpieltageMap,
+  SquadPlayer,
 } from "./types";
 
 const BASE = process.env.FOOTBALL_API_BASE_URL!;
@@ -13,7 +15,7 @@ const KEY = process.env.FOOTBALL_API_KEY!;
 interface ApiResponse<T> {
   get: string;
   parameters: Record<string, string>;
-  errors: string[];
+  errors: Record<string, string> | string[];
   results: number;
   paging: { current: number; total: number };
   response: T;
@@ -36,104 +38,114 @@ async function footballGet<T>(
   });
 
   if (!res.ok) {
-    throw new Error(`API-Football error ${res.status}: ${await res.text()}`);
+    throw new Error(`API-Football HTTP ${res.status}`);
   }
 
   const data: ApiResponse<T> = await res.json();
+
+  // API returns errors in body (e.g. rate limit) with HTTP 200
+  const errors = data.errors;
+  if (errors && !Array.isArray(errors) && Object.keys(errors).length > 0) {
+    throw new Error(`API-Football error: ${JSON.stringify(errors)}`);
+  }
+
   return data.response;
 }
 
 // ─── Teams ────────────────────────────────────────────────────────────────────
 
-export async function getTeamsByLeague(leagueId: number, season: number): Promise<TeamWithVenue[]> {
-  return footballGet<TeamWithVenue[]>("/teams", {
-    league: String(leagueId),
-    season: String(season),
-  });
-}
+// Cached at app level — teams change at most once per season
+export const getTeamsByLeague = unstable_cache(
+  async (leagueId: number, season: number): Promise<TeamWithVenue[]> =>
+    footballGet<TeamWithVenue[]>("/teams", {
+      league: String(leagueId),
+      season: String(season),
+    }),
+  ["teams-by-league"],
+  { revalidate: 86400 }
+);
 
 export async function getTeamById(teamId: number): Promise<TeamWithVenue | null> {
   const res = await footballGet<TeamWithVenue[]>("/teams", { id: String(teamId) });
   return res[0] ?? null;
 }
 
-export async function getTeamBySlug(
-  slug: string,
-  leagueId: number,
-  season: number
-): Promise<TeamWithVenue | null> {
-  const teams = await getTeamsByLeague(leagueId, season);
-  return teams.find((t) => teamToSlug(t.team.name) === slug) ?? null;
-}
+// ─── Squad ────────────────────────────────────────────────────────────────────
+
+export const getSquad = unstable_cache(
+  async (teamId: number): Promise<SquadPlayer[]> => {
+    const res = await footballGet<{ team: Team; players: SquadPlayer[] }[]>(
+      "/players/squads",
+      { team: String(teamId) }
+    );
+    return res[0]?.players ?? [];
+  },
+  ["squad"],
+  { revalidate: 86400 }
+);
 
 // ─── Players ─────────────────────────────────────────────────────────────────
 
-export async function getTopScorers(leagueId: number, season: number): Promise<PlayerWithStats[]> {
-  return footballGet<PlayerWithStats[]>(
-    "/players/topscorers",
-    { league: String(leagueId), season: String(season) },
-    3600
-  );
-}
+// Cache per league — reused by generateStaticParams AND page components
+export const getTopScorers = unstable_cache(
+  async (leagueId: number, season: number): Promise<PlayerWithStats[]> =>
+    footballGet<PlayerWithStats[]>(
+      "/players/topscorers",
+      { league: String(leagueId), season: String(season) }
+    ),
+  ["top-scorers"],
+  { revalidate: 3600 }
+);
 
-export async function getTopAssists(leagueId: number, season: number): Promise<PlayerWithStats[]> {
-  return footballGet<PlayerWithStats[]>(
-    "/players/topassists",
-    { league: String(leagueId), season: String(season) },
-    3600
-  );
-}
+export const getTopAssists = unstable_cache(
+  async (leagueId: number, season: number): Promise<PlayerWithStats[]> =>
+    footballGet<PlayerWithStats[]>(
+      "/players/topassists",
+      { league: String(leagueId), season: String(season) }
+    ),
+  ["top-assists"],
+  { revalidate: 3600 }
+);
 
+// Direct player fetch — only used for dynamic (non-top-scorer) player pages
 export async function getPlayerById(
   playerId: number,
-  season: number,
-  leagueId?: number
-): Promise<PlayerWithStats | null> {
-  const params: Record<string, string> = {
-    id: String(playerId),
-    season: String(season),
-  };
-  if (leagueId) params.league = String(leagueId);
-
-  const res = await footballGet<PlayerWithStats[]>("/players", params, 3600);
-  return res[0] ?? null;
-}
-
-export async function searchPlayers(
-  name: string,
-  leagueId: number,
   season: number
-): Promise<PlayerWithStats[]> {
-  return footballGet<PlayerWithStats[]>("/players", {
-    search: name,
-    league: String(leagueId),
-    season: String(season),
-  });
+): Promise<PlayerWithStats | null> {
+  const res = await footballGet<PlayerWithStats[]>(
+    "/players",
+    { id: String(playerId), season: String(season) },
+    3600
+  );
+  return res[0] ?? null;
 }
 
 // ─── Standings ────────────────────────────────────────────────────────────────
 
-export async function getStandings(leagueId: number, season: number): Promise<Standing[]> {
-  const res = await footballGet<{ league: { standings: Standing[][] } }[]>(
-    "/standings",
-    { league: String(leagueId), season: String(season) },
-    3600
-  );
-  return res[0]?.league?.standings?.[0] ?? [];
-}
+export const getStandings = unstable_cache(
+  async (leagueId: number, season: number): Promise<Standing[]> => {
+    const res = await footballGet<{ league: { standings: Standing[][] } }[]>(
+      "/standings",
+      { league: String(leagueId), season: String(season) }
+    );
+    return res[0]?.league?.standings?.[0] ?? [];
+  },
+  ["standings"],
+  { revalidate: 3600 }
+);
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-export async function getFixturesByLeague(
-  leagueId: number,
-  season: number
-): Promise<Fixture[]> {
-  return footballGet<Fixture[]>(
-    "/fixtures",
-    { league: String(leagueId), season: String(season) },
-    1800
-  );
-}
+export const getFixturesByLeague = unstable_cache(
+  async (leagueId: number, season: number): Promise<Fixture[]> =>
+    footballGet<Fixture[]>(
+      "/fixtures",
+      { league: String(leagueId), season: String(season) },
+      1800
+    ),
+  ["fixtures-by-league"],
+  { revalidate: 1800 }
+);
 
 export async function getFixturesByRound(
   leagueId: number,
@@ -157,6 +169,43 @@ export async function getUpcomingFixtures(
   return all
     .filter((f) => f.fixture.timestamp * 1000 > now)
     .sort((a, b) => a.fixture.timestamp - b.fixture.timestamp)
+    .slice(0, limit);
+}
+
+export async function getTeamNextFixtures(
+  teamId: number,
+  leagueId: number,
+  season: number,
+  limit = 5
+): Promise<Fixture[]> {
+  const all = await getFixturesByLeague(leagueId, season);
+  const now = Date.now();
+  return all
+    .filter(
+      (f) =>
+        f.fixture.timestamp * 1000 > now &&
+        (f.teams.home.id === teamId || f.teams.away.id === teamId)
+    )
+    .sort((a, b) => a.fixture.timestamp - b.fixture.timestamp)
+    .slice(0, limit);
+}
+
+export async function getTeamRecentFixtures(
+  teamId: number,
+  leagueId: number,
+  season: number,
+  limit = 5
+): Promise<Fixture[]> {
+  const all = await getFixturesByLeague(leagueId, season);
+  const now = Date.now();
+  return all
+    .filter(
+      (f) =>
+        f.fixture.timestamp * 1000 < now &&
+        (f.teams.home.id === teamId || f.teams.away.id === teamId) &&
+        ["FT", "AET", "PEN"].includes(f.fixture.status.short)
+    )
+    .sort((a, b) => b.fixture.timestamp - a.fixture.timestamp)
     .slice(0, limit);
 }
 
@@ -184,7 +233,9 @@ export function teamToSlug(name: string): string {
   return name
     .toLowerCase()
     .replace(/\s+/g, "-")
-    .replace(/[äöü]/g, (c) => ({ ä: "ae", ö: "oe", ü: "ue" }[c] ?? c))
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
     .replace(/ß/g, "ss")
     .replace(/[^a-z0-9-]/g, "");
 }
@@ -193,7 +244,9 @@ export function playerToSlug(firstname: string, lastname: string, id: number): s
   const name = `${firstname}-${lastname}`
     .toLowerCase()
     .replace(/\s+/g, "-")
-    .replace(/[äöü]/g, (c) => ({ ä: "ae", ö: "oe", ü: "ue" }[c] ?? c))
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
     .replace(/ß/g, "ss")
     .replace(/[^a-z0-9-]/g, "");
   return `${name}-${id}`;
@@ -205,7 +258,6 @@ export function slugToPlayerId(slug: string): number {
 }
 
 export function roundToSpieltag(round: string): string {
-  // "Regular Season - 12" → "12"
   return round.split(" - ")[1] ?? round.replace(/\D/g, "");
 }
 
