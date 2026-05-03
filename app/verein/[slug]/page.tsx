@@ -18,7 +18,6 @@ import { getUpcomingOdds, extractBestOdds, formatOdds } from "@/lib/odds-api";
 import { formatDate, formatDateTime, cn } from "@/lib/utils";
 
 export const revalidate = 3600;
-export const dynamicParams = true;
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -32,15 +31,6 @@ async function findTeam(slug: string) {
     if (match) return { teamData: match, liga };
   }
   return null;
-}
-
-export async function generateStaticParams() {
-  const slugs = new Set<string>();
-  for (const liga of LIGEN) {
-    const teams = await getTeamsByLeague(liga.apiFootballId, liga.season).catch(() => []);
-    for (const t of teams) slugs.add(teamToSlug(t.team.name));
-  }
-  return [...slugs].map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

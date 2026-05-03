@@ -9,7 +9,6 @@ import {
   getTopAssists,
   getPlayerById,
   getTeamNextFixtures,
-  playerToSlug,
   slugToPlayerId,
   teamToSlug,
 } from "@/lib/football-api";
@@ -18,27 +17,9 @@ import { formatDate, formatDateTime } from "@/lib/utils";
 import type { PlayerWithStats } from "@/lib/types";
 
 export const revalidate = 3600;
-export const dynamicParams = true;
 
 interface Props {
   params: Promise<{ slug: string }>;
-}
-
-// ─── generateStaticParams: only pre-build top scorers (uses cached data) ──────
-export async function generateStaticParams() {
-  const results = await Promise.allSettled(
-    LIGEN.map((l) => getTopScorers(l.apiFootballId, l.season))
-  );
-
-  const slugs = new Set<string>();
-  for (const r of results) {
-    if (r.status === "fulfilled") {
-      for (const p of r.value.slice(0, 10)) {
-        slugs.add(playerToSlug(p.player.firstname, p.player.lastname, p.player.id));
-      }
-    }
-  }
-  return [...slugs].map((slug) => ({ slug }));
 }
 
 // ─── Find player across all cached league data ─────────────────────────────────
