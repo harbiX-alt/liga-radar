@@ -232,6 +232,7 @@ export function playerToSlug(firstname: string, lastname: string, id: number): s
     .toLowerCase()
     .replace(/\s+/g, "-")
     .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9-]/g, "");
   return `${name}-${id}`;
 }

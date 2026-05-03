@@ -15,8 +15,33 @@ import {
 import { getUpcomingOdds, extractBestOdds, formatOdds } from "@/lib/odds-api";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import type { PlayerWithStats } from "@/lib/types";
+import { STATIC_SPIELER } from "@/data/bundesliga-spieler";
+import type { StaticPlayer } from "@/data/bundesliga-spieler";
 
 export const revalidate = 3600;
+
+function staticPlayerToPlayerWithStats(p: StaticPlayer): PlayerWithStats {
+  const parts = p.name.split(" ");
+  const firstname = parts[0];
+  const lastname = parts.slice(1).join(" ") || parts[0];
+  return {
+    player: {
+      id: p.apiId, name: p.name, firstname, lastname,
+      age: 0, birth: { date: "", place: "", country: p.nationalitaet },
+      nationality: p.nationalitaet, height: "", weight: "", injured: false, photo: "",
+    },
+    statistics: [{
+      team: { id: 0, name: p.verein, code: "", country: "Germany", founded: 0, national: false, logo: "" },
+      league: { id: 78, name: "1. Bundesliga", country: "Germany", logo: "", season: 2025 },
+      games: { appearences: 0, lineups: 0, minutes: 0, position: p.position, rating: "", captain: false },
+      goals: { total: 0, conceded: 0, assists: 0, saves: 0 },
+      passes: { total: 0, key: 0, accuracy: 0 },
+      shots: { total: 0, on: 0 },
+      cards: { yellow: 0, yellowred: 0, red: 0 },
+      dribbles: { attempts: 0, success: 0 },
+    }],
+  };
+}
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -56,7 +81,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const playerId = slugToPlayerId(slug);
   if (isNaN(playerId)) return {};
 
-  const data = await findPlayer(playerId);
+  const apiData = await findPlayer(playerId);
+  const staticP = !apiData ? STATIC_SPIELER.find((p) => p.apiId === playerId) : null;
+  const data = apiData ?? (staticP ? staticPlayerToPlayerWithStats(staticP) : null);
   if (!data) return {};
 
   const { player, statistics } = data;
@@ -83,7 +110,9 @@ export default async function SpielerPage({ params }: Props) {
   const playerId = slugToPlayerId(slug);
   if (isNaN(playerId)) notFound();
 
-  const data = await findPlayer(playerId);
+  const apiData = await findPlayer(playerId);
+  const staticP = !apiData ? STATIC_SPIELER.find((p) => p.apiId === playerId) : null;
+  const data = apiData ?? (staticP ? staticPlayerToPlayerWithStats(staticP) : null);
   if (!data) notFound();
 
   const { player, statistics } = data;

@@ -30,7 +30,7 @@ function staticTeamsToStandings(limit: number): Standing[] {
 }
 
 function staticSpielerToPlayerWithStats(limit: number): PlayerWithStats[] {
-  return STATIC_SPIELER.filter((p) => p.liga === "bundesliga")
+  return STATIC_SPIELER.filter((p) => p.liga === "bundesliga" && p.position !== "Torwart")
     .slice(0, limit)
     .map((p) => {
       const parts = p.name.split(" ");
